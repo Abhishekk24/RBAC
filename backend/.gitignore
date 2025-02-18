@@ -1,0 +1,49 @@
+# Python virtual environment
+venvv/
+.env
+*.env
+*.venv
+
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Solidity build artifacts
+build/
+*.abi
+*.bin
+*.json
+
+# Logs and debug
+*.log
+logs/
+debug.log
+
+# Environment and secrets
+.env
+.env.* 
+.secret
+
+# Python dependencies
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE and OS files
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints (if using Jupyter)
+.ipynb_checkpoints/
+
+# Pytest cache and test outputs
+.pytest_cache/
+htmlcov/
+coverage.xml

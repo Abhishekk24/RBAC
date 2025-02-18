@@ -1,0 +1,55 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node modules and dependencies
+node_modules/
+dist/
+dist-ssr/
+.cache/
+
+# Environment and sensitive files
+*.local
+.env
+.env.* 
+!.env.example  # Keep example environment file for reference
+
+# Vite build output
+.vite/
+*.out/
+
+# Blockchain and Truffle artifacts
+build/
+contracts/*.json  # Avoid pushing compiled contracts
+*.abi             # Ethereum contract ABI files
+*.bin             # Compiled bytecode
+secret.json       # Sensitive Truffle mnemonic file
+ganache_data/     # Local blockchain data
+
+# Editor directories and files
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Package managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Tests and coverage reports
+coverage/
+test-results/
