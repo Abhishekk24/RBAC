@@ -86,7 +86,7 @@ def grant_access():
 def revoke_access():
     try:
         data = request.json
-        account = web3.eth.accounts[0]
+        account = web3.eth.accounts[4]
 
         # Check if the token is valid before revoking
         is_valid = contract.functions.isTokenValid(data["tokenId"]).call()

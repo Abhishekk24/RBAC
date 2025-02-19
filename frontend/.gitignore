@@ -53,3 +53,5 @@ pnpm-lock.yaml
 # Tests and coverage reports
 coverage/
 test-results/
+
+firebase/
