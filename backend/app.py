@@ -19,7 +19,7 @@ except Exception as e:
     contract_abi = None
 
 # Contract address (replace with your deployed contract address)
-contract_address = "0x4d7F9042f0408e8Dad5c10ce56c1898e79bd2C62"
+contract_address = "0xe826B109eb040c9F4462ca968D1Cfe9D14208bC0"
 
 # Initialize contract
 if contract_abi:
@@ -86,20 +86,24 @@ def grant_access():
 def revoke_access():
     try:
         data = request.json
-        account = web3.eth.accounts[0]
+        token_id = data["tokenId"]
+
+        # Use the first available Ganache account as the admin
+        admin_address = web3.eth.accounts[0]
 
         # Check if the token is valid before revoking
-        is_valid = contract.functions.isTokenValid(data["tokenId"]).call()
+        is_valid = contract.functions.isTokenValid(token_id).call()
         if not is_valid:
             return jsonify({"error": "Token is already revoked or invalid"}), 400
 
         # Call the `revokeToken` function in the smart contract
-        tx_hash = contract.functions.revokeToken(data["tokenId"]).transact({"from": account})
-        
+        tx_hash = contract.functions.revokeToken(token_id).transact({"from": admin_address})
+
         return jsonify({"tx_hash": tx_hash.hex()}), 200
     except Exception as e:
         print("Error in revoke_access:", str(e))
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/check_access/<int:tokenId>", methods=["GET"])
 def check_access(tokenId):
