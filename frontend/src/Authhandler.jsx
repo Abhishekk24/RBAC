@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import HashLoader from "react-spinners/HashLoader";
 
 const AuthHandler = ({ onRoleAssigned }) => {
   const { user } = useUser();
@@ -47,7 +48,12 @@ const AuthHandler = ({ onRoleAssigned }) => {
     checkUserRole();
   }, [user]);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading)
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <HashLoader />
+      </div>
+    );
 
   return null;
 };

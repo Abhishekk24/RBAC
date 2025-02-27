@@ -11,10 +11,20 @@ contract CapabilityToken {
 
     mapping(uint256 => Token) public tokens;
     uint256 public tokenCounter;
+    address public admin;
 
     event TokenIssued(uint256 tokenId, address indexed owner, string resource, uint256 expiry);
     event TokenRevoked(uint256 tokenId);
     event TokenDelegated(uint256 tokenId, address indexed newOwner);
+
+    constructor() {
+        admin = msg.sender; // Set the deployer as the admin
+    }
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can revoke tokens");
+        _;
+    }
 
     function issueToken(address to, string memory resource, uint256 duration) public returns (uint256) {
         uint256 tokenId = tokenCounter++;
@@ -23,7 +33,7 @@ contract CapabilityToken {
         return tokenId;
     }
 
-    function revokeToken(uint256 tokenId) public {
+    function revokeToken(uint256 tokenId) public onlyAdmin {
         require(tokens[tokenId].valid, "Token already revoked");
         tokens[tokenId].valid = false;
         emit TokenRevoked(tokenId);

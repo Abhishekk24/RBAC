@@ -19,7 +19,7 @@ except Exception as e:
     contract_abi = None
 
 # Contract address (replace with your deployed contract address)
-contract_address = "0xe826B109eb040c9F4462ca968D1Cfe9D14208bC0"
+contract_address = "0x09B65C481564C2Ee35De63C1fE115777711413Cd"
 
 # Initialize contract
 if contract_abi:
@@ -82,27 +82,42 @@ def grant_access():
         print("Error in grant_access:", str(e))
         return jsonify({"error": str(e)}), 500
 
+def get_admin_address():
+    return contract.functions.admin().call()
+
 @app.route("/revoke_access", methods=["POST"])
 def revoke_access():
     try:
         data = request.json
-        token_id = data["tokenId"]
+        token_id = int(data["tokenId"])  # Ensure token ID is an integer
 
         # Use the first available Ganache account as the admin
-        admin_address = web3.eth.accounts[0]
+        admin_address =get_admin_address()
 
-        # Check if the token is valid before revoking
+        # Verify if the token is valid before revoking
         is_valid = contract.functions.isTokenValid(token_id).call()
         if not is_valid:
             return jsonify({"error": "Token is already revoked or invalid"}), 400
 
-        # Call the `revokeToken` function in the smart contract
-        tx_hash = contract.functions.revokeToken(token_id).transact({"from": admin_address})
+        print(f"Revoking token ID {token_id} from admin {admin_address}")
+
+        # Ensure the admin account has enough funds for gas fees
+        balance = web3.eth.get_balance(admin_address)
+        if balance < Web3.to_wei(0.01, "ether"):  # Adjust if needed
+            return jsonify({"error": "Admin has insufficient funds"}), 400
+
+        # Call the revokeToken function in the smart contract
+        tx_hash = contract.functions.revokeToken(token_id).transact({
+            "from": admin_address
+        })
+
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         return jsonify({"tx_hash": tx_hash.hex()}), 200
     except Exception as e:
         print("Error in revoke_access:", str(e))
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/check_access/<int:tokenId>", methods=["GET"])
