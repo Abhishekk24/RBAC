@@ -34,13 +34,25 @@ contract CapabilityToken {
     }
 
     function revokeToken(uint256 tokenId) public onlyAdmin {
-        require(tokens[tokenId].valid, "Token already revoked");
-        tokens[tokenId].valid = false;
+        Token storage token = tokens[tokenId];
+        
+        require(token.valid, "Token already revoked");
+        require(token.expiry > block.timestamp, "Token already expired, cannot revoke");
+
+        token.valid = false;
         emit TokenRevoked(tokenId);
     }
+    function getTokenExpiry(uint256 tokenId) public view returns (uint256) {
+    return tokens[tokenId].expiry;
+}
+
 
     function isTokenValid(uint256 tokenId) public view returns (bool) {
-        return tokens[tokenId].valid && tokens[tokenId].expiry > block.timestamp;
+        Token storage token = tokens[tokenId];
+        if (!token.valid || token.expiry <= block.timestamp) {
+            return false; // Token is invalid if revoked or expired
+        }
+        return true;
     }
 
     function delegateToken(uint256 tokenId, address newOwner) public {

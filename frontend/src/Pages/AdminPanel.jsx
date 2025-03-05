@@ -33,11 +33,39 @@ const AdminPanel = () => {
     try {
       const querySnapshot = await getDocs(collection(db, "tokens"));
       const tokens = querySnapshot.docs.map((doc) => doc.data().tokenId);
-      setIssuedTokens(tokens);
+
+      const response = await axios.post(
+        "http://127.0.0.1:5000/get_token_status",
+        {
+          tokens: tokens,
+        }
+      );
+      const updatedTokens = response.data.map((token) => ({
+        ...token,
+        expiryTimestamp: Date.now() + token.remaining_time * 1000,
+      }));
+
+      setIssuedTokens(updatedTokens);
     } catch (error) {
-      toast.error("Error fetching tokens");
+      console.error("Error fetching tokens:", error);
     }
   };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIssuedTokens((prevTokens) =>
+        prevTokens.map((token) => {
+          const remainingTime = Math.max(
+            0,
+            Math.floor((token.expiryTimestamp - Date.now()) / 1000)
+          );
+          return { ...token, remaining_time: remainingTime };
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const grantAccess = async (userAddress, resource, duration) => {
     try {
@@ -47,7 +75,9 @@ const AdminPanel = () => {
         duration,
       });
 
-      await addDoc(collection(db, "tokens"), { tokenId: response.data.token_id });
+      await addDoc(collection(db, "tokens"), {
+        tokenId: response.data.token_id,
+      });
       toast.success(`Access granted! Token ID: ${response.data.token_id}`);
       fetchIssuedTokens();
       fetchRequests();
@@ -80,7 +110,9 @@ const AdminPanel = () => {
       <h2 className="text-3xl font-bold text-center mb-6">Admin Panel</h2>
 
       <div className="mb-6 p-6 bg-white shadow-lg rounded-lg">
-        <h3 className="text-xl font-semibold border-b pb-3 mb-3">Pending Requests</h3>
+        <h3 className="text-xl font-semibold border-b pb-3 mb-3">
+          Pending Requests
+        </h3>
         {loading ? (
           <p className="text-gray-500">Loading requests...</p>
         ) : requests.length === 0 ? (
@@ -88,14 +120,19 @@ const AdminPanel = () => {
         ) : (
           <ul className="space-y-4">
             {requests.map((req, index) => (
-              <li key={index} className="flex justify-between items-center p-3 border rounded-lg bg-gray-50">
+              <li
+                key={index}
+                className="flex justify-between items-center p-3 border rounded-lg bg-gray-50"
+              >
                 <div>
                   <p className="font-medium">User: {req.user_address}</p>
                   <p className="text-gray-600">Resource: {req.resource}</p>
                   <p className="text-gray-600">Duration: {req.duration}</p>
                 </div>
                 <button
-                  onClick={() => grantAccess(req.user_address, req.resource, req.duration)}
+                  onClick={() =>
+                    grantAccess(req.user_address, req.resource, req.duration)
+                  }
                   className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
                 >
                   <CheckIcon className="h-5 w-5 mr-2" /> Grant Access
@@ -107,7 +144,9 @@ const AdminPanel = () => {
       </div>
 
       <div className="mb-6 p-6 bg-white shadow-lg rounded-lg">
-        <h3 className="text-xl font-semibold border-b pb-3 mb-3">Revoke Access</h3>
+        <h3 className="text-xl font-semibold border-b pb-3 mb-3">
+          Revoke Access
+        </h3>
         <div className="flex gap-4">
           <input
             type="text"
@@ -126,7 +165,9 @@ const AdminPanel = () => {
       </div>
 
       <div className="p-6 bg-white shadow-lg rounded-lg">
-        <h3 className="text-xl font-semibold border-b pb-3 mb-3">Issued Tokens</h3>
+        <h3 className="text-xl font-semibold border-b pb-3 mb-3">
+          Issued Tokens
+        </h3>
         <input
           type="text"
           placeholder="Search Token ID"
@@ -139,10 +180,19 @@ const AdminPanel = () => {
         ) : (
           <ul className="space-y-2">
             {issuedTokens
-              .filter((id) => id.toString().includes(search))
-              .map((id, index) => (
+              .filter((token) => token.tokenId.toString().includes(search))
+              .map((token, index) => (
                 <li key={index} className="p-2 border rounded-lg bg-gray-50">
-                  Token ID: {id}
+                  <p>
+                    <strong>Token ID:</strong> {token.tokenId}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {token.status}
+                  </p>
+                  <p>
+                    <strong>Remaining Time:</strong> {token.remaining_time}{" "}
+                    seconds
+                  </p>
                 </li>
               ))}
           </ul>

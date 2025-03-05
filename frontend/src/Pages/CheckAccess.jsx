@@ -20,12 +20,19 @@ const CheckAccess = () => {
     setStatus(null);
 
     try {
+      console.log(`Checking access for token ID: ${tokenId}`);
+
       const response = await axios.get(
         `http://127.0.0.1:5000/check_access/${parseInt(tokenId)}`
       );
+
+      console.log("Response:", response.data);
       setStatus(response.data.valid ? "Valid" : "Invalid");
     } catch (err) {
-      console.error("Error checking access:", err.response?.data || err.message);
+      console.error(
+        "Error checking access:",
+        err.response?.data || err.message
+      );
       setError("Failed to check access. Please try again.");
     } finally {
       setLoading(false);
@@ -35,7 +42,9 @@ const CheckAccess = () => {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-6">
       <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-semibold mb-4 text-center">Check Access</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-center">
+          Check Access
+        </h2>
         <input
           type="number"
           placeholder="Enter Token ID"
@@ -48,14 +57,16 @@ const CheckAccess = () => {
           className="w-full bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md transition"
           disabled={loading}
         >
-          {loading ? 
-        <HashLoader size={30} />
-       : "Check"}
+          {loading ? <HashLoader size={30} /> : "Check"}
         </button>
 
         {/* Status Messages */}
         {status && (
-          <p className={`mt-4 text-lg font-medium ${status === "Valid" ? "text-green-600" : "text-red-600"}`}>
+          <p
+            className={`mt-4 text-lg font-medium ${
+              status === "Valid" ? "text-green-600" : "text-red-600"
+            }`}
+          >
             Access: {status}
           </p>
         )}
