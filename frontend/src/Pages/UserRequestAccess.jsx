@@ -2,9 +2,10 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { db } from "../firebase";
 import { collection, getDocs } from "firebase/firestore";
+import { useAccount } from "wagmi";
 
 const UserRequestAccess = () => {
-  const [userAddress, setUserAddress] = useState("");
+  const { address, isConnected } = useAccount();
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState("");
   const [sensors, setSensors] = useState([]);
@@ -23,7 +24,6 @@ const UserRequestAccess = () => {
           id: doc.id,
           ...doc.data(),
         }));
-
         setAdmins(adminList);
       } catch (error) {
         console.error("Error fetching admins:", error);
@@ -36,14 +36,20 @@ const UserRequestAccess = () => {
   const handleAdminSelect = (e) => {
     const adminId = e.target.value;
     setSelectedAdmin(adminId);
-
     const selected = admins.find((admin) => admin.id === adminId);
     setSensors(selected?.Sensors || []);
-    setSelectedSensor(""); // Reset sensor selection when changing admin
+    setSelectedSensor("");
   };
 
   const requestAccess = async () => {
-    if (!userAddress || !selectedAdmin || !selectedSensor || !duration || isNaN(duration) || parseInt(duration) <= 0) {
+    if (
+      !address ||
+      !selectedAdmin ||
+      !selectedSensor ||
+      !duration ||
+      isNaN(duration) ||
+      parseInt(duration) <= 0
+    ) {
       setError("Please fill in all fields correctly.");
       setSuccess(null);
       return;
@@ -55,13 +61,12 @@ const UserRequestAccess = () => {
 
     try {
       await axios.post("http://127.0.0.1:5000/request_access", {
-        user_address: userAddress,
+        user_address: address,
         resource: selectedSensor,
         duration: parseInt(duration),
       });
 
       setSuccess("Access request submitted successfully!");
-      setUserAddress("");
       setSelectedAdmin("");
       setSelectedSensor("");
       setDuration("");
@@ -76,58 +81,71 @@ const UserRequestAccess = () => {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-6">
       <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-semibold mb-4 text-center">Request Access</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-center">
+          Request Access
+        </h2>
 
-        <input
-          type="text"
-          placeholder="Your Address"
-          value={userAddress}
-          onChange={(e) => setUserAddress(e.target.value)}
-          className="border p-2 w-full rounded-md mb-4"
-        />
+        {!isConnected ? (
+          <div className="w-full">
+            <appkit-button />
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 text-gray-600">
+              Connected as: <span className="font-mono">{address}</span>
+            </div>
 
-        <select value={selectedAdmin} onChange={handleAdminSelect} className="border p-2 w-full rounded-md mb-4">
-          <option value="">Select Admin</option>
-          {admins.map((admin) => (
-            <option key={admin.id} value={admin.id}>
-              {admin.first_name} {admin.last_name}
-            </option>
-          ))}
-        </select>
+            <select
+              value={selectedAdmin}
+              onChange={handleAdminSelect}
+              className="border p-2 w-full rounded-md mb-4"
+            >
+              <option value="">Select Admin</option>
+              {admins.map((admin) => (
+                <option key={admin.id} value={admin.id}>
+                  {admin.first_name} {admin.last_name}
+                </option>
+              ))}
+            </select>
 
-        <select
-          value={selectedSensor}
-          onChange={(e) => setSelectedSensor(e.target.value)}
-          className="border p-2 w-full rounded-md mb-4"
-          disabled={!sensors.length}
-        >
-          <option value="">Select Sensor</option>
-          {sensors.map((sensor, index) => (
-            <option key={index} value={sensor}>
-              {sensor}
-            </option>
-          ))}
-        </select>
+            <select
+              value={selectedSensor}
+              onChange={(e) => setSelectedSensor(e.target.value)}
+              className="border p-2 w-full rounded-md mb-4"
+              disabled={!sensors.length}
+            >
+              <option value="">Select Sensor</option>
+              {sensors.map((sensor, index) => (
+                <option key={index} value={sensor}>
+                  {sensor}
+                </option>
+              ))}
+            </select>
 
-        <input
-          type="number"
-          placeholder="Duration (seconds)"
-          value={duration}
-          onChange={(e) => setDuration(e.target.value)}
-          className="border p-2 w-full rounded-md mb-4"
-        />
+            <input
+              type="number"
+              placeholder="Duration (seconds)"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="border p-2 w-full rounded-md mb-4"
+            />
 
-        <button
-          onClick={requestAccess}
-          className={`w-full text-white px-4 py-2 rounded-md transition ${loading ? "bg-gray-400" : "bg-blue-500 hover:bg-blue-600"}`}
-          disabled={loading}
-        >
-          {loading ? "Submitting..." : "Request"}
-        </button>
+            <button
+              onClick={requestAccess}
+              className={`w-full text-white px-4 py-2 rounded-md transition ${
+                loading ? "bg-gray-400" : "bg-blue-500 hover:bg-blue-600"
+              }`}
+              disabled={loading}
+            >
+              {loading ? "Submitting..." : "Request"}
+            </button>
 
-        {/* Status Messages */}
-        {error && <p className="mt-4 text-red-500 text-center">{error}</p>}
-        {success && <p className="mt-4 text-green-500 text-center">{success}</p>}
+            {error && <p className="mt-4 text-red-500 text-center">{error}</p>}
+            {success && (
+              <p className="mt-4 text-green-500 text-center">{success}</p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

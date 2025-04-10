@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 import Navbar from "./Components/Navbar";
-import Sidebar from "./Components/Sidebar"; // Import Sidebar
+import Sidebar from "./Components/Sidebar";
 import Home from "./Pages/Home";
 import UserRequestAccess from "./Pages/UserRequestAccess";
 import AdminPanel from "./Pages/AdminPanel";
