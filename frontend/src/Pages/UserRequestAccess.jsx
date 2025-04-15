@@ -7,15 +7,23 @@ import {
   onSnapshot,
   query,
   where,
-} from "firebase/firestore"; // Added imports
+} from "firebase/firestore";
 import { ref, onValue, off } from "firebase/database";
 import { useAccount } from "wagmi";
-import { toast, ToastContainer } from "react-toastify"; // Added for notifications
+import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import RealTimeGraph from "../Components/RealTimeGraph";
-import { Card, CardContent, Typography, Grid } from "@mui/material";
+import {
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  CircularProgress,
+  Button,
+} from "@mui/material";
+import { useNavigate } from "react-router-dom";
 
 const UserRequestAccess = () => {
+  const navigate = useNavigate();
   const { address, isConnected } = useAccount();
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState("");
@@ -25,22 +33,7 @@ const UserRequestAccess = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [sensorData, setSensorData] = useState(null);
-  const [activeToken, setActiveToken] = useState(() => {
-    const savedToken = localStorage.getItem("activeToken");
-    return savedToken && JSON.parse(savedToken).expiryTimestamp > Date.now()
-      ? JSON.parse(savedToken)
-      : null;
-  });
   const processedTokens = useRef(new Set());
-
-  useEffect(() => {
-    if (activeToken) {
-      localStorage.setItem("activeToken", JSON.stringify(activeToken));
-    } else {
-      localStorage.removeItem("activeToken");
-    }
-  }, [activeToken]);
 
   useEffect(() => {
     const fetchAdmins = async () => {
@@ -54,6 +47,7 @@ const UserRequestAccess = () => {
         setAdmins(adminList);
       } catch (error) {
         console.error("Error fetching admins:", error);
+        toast.error("Failed to load admin list");
       }
     };
 
@@ -61,7 +55,7 @@ const UserRequestAccess = () => {
   }, []);
 
   useEffect(() => {
-    if (!address) return; // Skip if address is not available
+    if (!address) return;
 
     const tokensRef = collection(db, "tokens");
     const q = query(
@@ -75,54 +69,24 @@ const UserRequestAccess = () => {
         if (change.type === "added") {
           const token = change.doc.data();
           if (processedTokens.current.has(token.tokenId)) return;
-          console.log("New token detected:", token);
+
           if (token.timestamp > Date.now() - 5000) {
-            // 5 second buffer
-            toast.success(`Access granted! Token ID: ${token.tokenId}`);
-            setActiveToken(token);
+            toast.success(`Access granted! Redirecting...`, {
+              autoClose: 2000,
+              onClose: () => navigate("/tokens"),
+            });
           }
           processedTokens.current.add(token.tokenId);
-        }
-      });
-      snapshot.docs.forEach((doc) => {
-        const token = doc.data();
-        const savedToken = JSON.parse(
-          localStorage.getItem("activeToken") || "null"
-        );
-        if (!activeToken && savedToken?.tokenId === token.tokenId) {
-          setActiveToken(token);
         }
       });
     });
 
     return () => unsubscribe();
-  }, [address]);
+  }, [address, navigate]);
+
   useEffect(() => {
     processedTokens.current = new Set();
   }, [address]);
-
-  useEffect(() => {
-    if (!activeToken?.resource) return;
-
-    const sensorRef = ref(realtimeDb, activeToken.resource);
-    console.log("Listening to path:", activeToken.resource);
-    const unsubscribe = onValue(sensorRef, (snapshot) => {
-      const data = snapshot.val();
-      setSensorData(data);
-    });
-
-    const expiryTime = activeToken.expiryTimestamp - Date.now();
-    const expiryTimer = setTimeout(() => {
-      toast.info(`Access to ${activeToken.resource} has expired`);
-      setActiveToken(null);
-      setSensorData(null);
-    }, expiryTime);
-
-    return () => {
-      off(sensorRef);
-      clearTimeout(expiryTimer);
-    };
-  }, [activeToken]);
 
   const handleAdminSelect = (e) => {
     const adminId = e.target.value;
@@ -151,19 +115,30 @@ const UserRequestAccess = () => {
     setSuccess(null);
 
     try {
-      await axios.post("http://127.0.0.1:5000/request_access", {
-        user_address: address,
-        resource: selectedSensor,
-        duration: parseInt(duration),
-      });
+      const response = await axios.post(
+        "http://127.0.0.1:5000/request_access",
+        {
+          user_address: address,
+          resource: selectedSensor,
+          duration: parseInt(duration),
+        },
+        {
+          timeout: 5000,
+        }
+      );
 
       setSuccess("Access request submitted successfully!");
       setSelectedAdmin("");
       setSelectedSensor("");
       setDuration("");
     } catch (error) {
-      console.error("Error submitting request:", error);
-      setError("Failed to submit request. Please try again.");
+      let errorMsg = "Failed to submit request";
+      if (error.response) {
+        errorMsg = error.response.data.error || errorMsg;
+      } else if (error.request) {
+        errorMsg = "Network error - please check your connection";
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -184,7 +159,6 @@ const UserRequestAccess = () => {
       />
 
       <Grid container spacing={3} justifyContent="center">
-        {/* Form Card */}
         <Grid item xs={12} md={6}>
           <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
             <CardContent>
@@ -203,92 +177,107 @@ const UserRequestAccess = () => {
                 </div>
               ) : (
                 <>
-                  <div className="mb-4 text-gray-600">
-                    Connected as: <span className="font-mono">{address}</span>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    Connected as: <strong>{address}</strong>
+                  </Typography>
+
+                  <div className="mb-4">
+                    <label
+                      htmlFor="admin-select"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Select Admin
+                    </label>
+                    <select
+                      id="admin-select"
+                      value={selectedAdmin}
+                      onChange={handleAdminSelect}
+                      className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Select Admin</option>
+                      {admins.map((admin) => (
+                        <option key={admin.id} value={admin.id}>
+                          {admin.first_name} {admin.last_name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  <select
-                    value={selectedAdmin}
-                    onChange={handleAdminSelect}
-                    className="border p-2 w-full rounded-md mb-4"
-                  >
-                    <option value="">Select Admin</option>
-                    {admins.map((admin) => (
-                      <option key={admin.id} value={admin.id}>
-                        {admin.first_name} {admin.last_name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mb-4">
+                    <label
+                      htmlFor="sensor-select"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Select Sensor
+                    </label>
+                    <select
+                      id="sensor-select"
+                      value={selectedSensor}
+                      onChange={(e) => setSelectedSensor(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      disabled={!sensors.length}
+                    >
+                      <option value="">Select Sensor</option>
+                      {sensors.map((sensor, index) => (
+                        <option key={index} value={sensor}>
+                          {sensor}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                  <select
-                    value={selectedSensor}
-                    onChange={(e) => setSelectedSensor(e.target.value)}
-                    className="border p-2 w-full rounded-md mb-4"
-                    disabled={!sensors.length}
-                  >
-                    <option value="">Select Sensor</option>
-                    {sensors.map((sensor, index) => (
-                      <option key={index} value={sensor}>
-                        {sensor}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mb-4">
+                    <label
+                      htmlFor="duration-input"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Duration (seconds)
+                    </label>
+                    <input
+                      id="duration-input"
+                      type="number"
+                      placeholder="Duration in seconds"
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      min="1"
+                    />
+                  </div>
 
-                  <input
-                    type="number"
-                    placeholder="Duration (seconds)"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="border p-2 w-full rounded-md mb-4"
-                  />
-
-                  <button
+                  <Button
                     onClick={requestAccess}
-                    className={`w-full text-white px-4 py-2 rounded-md transition ${
-                      loading ? "bg-gray-400" : "bg-blue-500 hover:bg-blue-600"
-                    }`}
+                    variant="contained"
+                    color="primary"
+                    fullWidth
                     disabled={loading}
+                    sx={{ py: 1.5 }}
                   >
-                    {loading ? "Submitting..." : "Request"}
-                  </button>
+                    {loading ? (
+                      <CircularProgress size={24} color="inherit" />
+                    ) : (
+                      "Request Access"
+                    )}
+                  </Button>
 
                   {error && (
-                    <p className="mt-4 text-red-500 text-center">{error}</p>
+                    <Typography color="error" align="center" sx={{ mt: 2 }}>
+                      {error}
+                    </Typography>
                   )}
                   {success && (
-                    <p className="mt-4 text-green-500 text-center">{success}</p>
+                    <Typography
+                      color="success.main"
+                      align="center"
+                      sx={{ mt: 2 }}
+                    >
+                      {success}
+                    </Typography>
                   )}
                 </>
               )}
             </CardContent>
           </Card>
         </Grid>
-
-        {/* Graph Card - Only shows when there's active data */}
-        {activeToken && sensorData && (
-          <Grid item xs={12} md={6}>
-            <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
-              <CardContent>
-                <RealTimeGraph
-                  sensorData={sensorData}
-                  sensorName={activeToken.resource}
-                />
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  align="center"
-                  sx={{ mt: 2 }}
-                >
-                  Access expires in:{" "}
-                  {Math.floor(
-                    (activeToken.expiryTimestamp - Date.now()) / 1000
-                  )}
-                  seconds
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
       </Grid>
     </div>
   );

@@ -8,6 +8,7 @@ import UserRequestAccess from "./Pages/UserRequestAccess";
 import AdminPanel from "./Pages/AdminPanel";
 import CheckAccess from "./Pages/CheckAccess";
 import AuthHandler from "./Authhandler";
+import TokensPage from "./Pages/TokensPage";
 import "./index.css";
 
 function App() {
@@ -25,6 +26,9 @@ function App() {
               <Route path="/" element={<Home />} />
               {role === "sensor_client" && (
                 <Route path="/user" element={<UserRequestAccess />} />
+              )}
+              {role === "sensor_client" && (
+                <Route path="/tokens" element={<TokensPage />} />
               )}
               {role === "admin" && (
                 <Route path="/admin" element={<AdminPanel />} />
