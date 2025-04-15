@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { db } from "../firebase";
-import { collection, addDoc, getDocs } from "firebase/firestore";
+import { collection, addDoc, getDocs, onSnapshot } from "firebase/firestore";
 import { CheckIcon, XCircleIcon } from "@heroicons/react/solid";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -13,9 +13,19 @@ const AdminPanel = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
+  // Format seconds to HH:MM:SS
+  const formatTime = (seconds) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, "0")}:${mins
+      .toString()
+      .padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
   useEffect(() => {
     fetchRequests();
-    fetchIssuedTokens();
+    setupTokenListener();
   }, []);
 
   const fetchRequests = async () => {
@@ -23,44 +33,51 @@ const AdminPanel = () => {
       const response = await axios.get("http://127.0.0.1:5000/get_requests");
       setRequests(response.data);
     } catch (error) {
-      toast.error("Error fetching requests");
+      toast.error("Error fetching requests: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchIssuedTokens = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, "tokens"));
-      const tokens = querySnapshot.docs.map((doc) => doc.data().tokenId);
-
-      const response = await axios.post(
-        "http://127.0.0.1:5000/get_token_status",
-        {
-          tokens: tokens,
-        }
-      );
-      const updatedTokens = response.data.map((token) => ({
-        ...token,
-        expiryTimestamp: Date.now() + token.remaining_time * 1000,
+  // Real-time listener for tokens
+  const setupTokenListener = () => {
+    const tokensRef = collection(db, "tokens");
+    return onSnapshot(tokensRef, (snapshot) => {
+      const tokens = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
       }));
 
-      setIssuedTokens(updatedTokens);
-    } catch (error) {
-      console.error("Error fetching tokens:", error);
-    }
+      // Fetch token status for all tokens
+      axios
+        .post("http://127.0.0.1:5000/get_token_status", {
+          tokens: tokens.map((t) => t.tokenId),
+        })
+        .then((response) => {
+          const updatedTokens = tokens.map((token, index) => ({
+            ...token,
+            ...response.data[index],
+            expiryTimestamp: token.timestamp + token.duration * 1000,
+          }));
+          setIssuedTokens(updatedTokens);
+        })
+        .catch((error) => {
+          console.error("Error fetching token status:", error);
+        });
+    });
   };
 
+  // Update remaining time every second
   useEffect(() => {
     const interval = setInterval(() => {
       setIssuedTokens((prevTokens) =>
-        prevTokens.map((token) => {
-          const remainingTime = Math.max(
+        prevTokens.map((token) => ({
+          ...token,
+          remaining_time: Math.max(
             0,
             Math.floor((token.expiryTimestamp - Date.now()) / 1000)
-          );
-          return { ...token, remaining_time: remainingTime };
-        })
+          ),
+        }))
       );
     }, 1000);
 
@@ -69,6 +86,7 @@ const AdminPanel = () => {
 
   const grantAccess = async (userAddress, resource, duration) => {
     try {
+      setLoading(true);
       const response = await axios.post("http://127.0.0.1:5000/grant_access", {
         user_address: userAddress,
         resource,
@@ -77,12 +95,21 @@ const AdminPanel = () => {
 
       await addDoc(collection(db, "tokens"), {
         tokenId: response.data.token_id,
+        userAddress,
+        resource,
+        duration,
+        timestamp: Date.now(),
+        expiryTimestamp: Date.now() + duration * 1000, // Add expiry timestamp
       });
-      toast.success(`Access granted! Token ID: ${response.data.token_id}`);
-      fetchIssuedTokens();
+
+      toast.success(
+        `Access granted to ${userAddress}! Token ID: ${response.data.token_id}`
+      );
       fetchRequests();
     } catch (error) {
-      toast.error("Error granting access");
+      toast.error("Error granting access: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -93,14 +120,20 @@ const AdminPanel = () => {
     }
 
     try {
+      setLoading(true);
       const response = await axios.post("http://127.0.0.1:5000/revoke_access", {
         tokenId: parseInt(tokenId),
       });
 
       toast.success(`Access revoked! Tx Hash: ${response.data.tx_hash}`);
-      fetchIssuedTokens();
+      setTokenId("");
     } catch (error) {
-      toast.error("Error revoking access");
+      toast.error(
+        "Error revoking access: " +
+          (error.response?.data?.error || error.message)
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -109,6 +142,7 @@ const AdminPanel = () => {
       <ToastContainer position="top-right" autoClose={3000} />
       <h2 className="text-3xl font-bold text-center mb-6">Admin Panel</h2>
 
+      {/* Pending Requests Section */}
       <div className="mb-6 p-6 bg-white shadow-lg rounded-lg">
         <h3 className="text-xl font-semibold border-b pb-3 mb-3">
           Pending Requests
@@ -127,13 +161,16 @@ const AdminPanel = () => {
                 <div>
                   <p className="font-medium">User: {req.user_address}</p>
                   <p className="text-gray-600">Resource: {req.resource}</p>
-                  <p className="text-gray-600">Duration: {req.duration}</p>
+                  <p className="text-gray-600">
+                    Duration: {formatTime(req.duration)}
+                  </p>
                 </div>
                 <button
                   onClick={() =>
                     grantAccess(req.user_address, req.resource, req.duration)
                   }
                   className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
+                  disabled={loading}
                 >
                   <CheckIcon className="h-5 w-5 mr-2" /> Grant Access
                 </button>
@@ -143,6 +180,7 @@ const AdminPanel = () => {
         )}
       </div>
 
+      {/* Revoke Access Section */}
       <div className="mb-6 p-6 bg-white shadow-lg rounded-lg">
         <h3 className="text-xl font-semibold border-b pb-3 mb-3">
           Revoke Access
@@ -158,19 +196,21 @@ const AdminPanel = () => {
           <button
             onClick={revokeAccess}
             className="bg-black hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center"
+            disabled={loading}
           >
             <XCircleIcon className="h-5 w-5 mr-2" /> Revoke
           </button>
         </div>
       </div>
 
+      {/* Issued Tokens Section */}
       <div className="p-6 bg-white shadow-lg rounded-lg">
         <h3 className="text-xl font-semibold border-b pb-3 mb-3">
           Issued Tokens
         </h3>
         <input
           type="text"
-          placeholder="Search Token ID"
+          placeholder="Search Token ID or User"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="border p-2 rounded-lg w-full mb-4"
@@ -180,19 +220,46 @@ const AdminPanel = () => {
         ) : (
           <ul className="space-y-2">
             {issuedTokens
-              .filter((token) => token.tokenId.toString().includes(search))
-              .map((token, index) => (
-                <li key={index} className="p-2 border rounded-lg bg-gray-50">
-                  <p>
-                    <strong>Token ID:</strong> {token.tokenId}
-                  </p>
-                  <p>
-                    <strong>Status:</strong> {token.status}
-                  </p>
-                  <p>
-                    <strong>Remaining Time:</strong> {token.remaining_time}{" "}
-                    seconds
-                  </p>
+              .filter(
+                (token) =>
+                  token.tokenId.toString().includes(search) ||
+                  (token.userAddress && token.userAddress.includes(search))
+              )
+              .map((token) => (
+                <li
+                  key={token.tokenId}
+                  className="p-4 border rounded-lg bg-gray-50 hover:bg-gray-100"
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="font-semibold">Token ID:</p>
+                      <p>{token.tokenId}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">User:</p>
+                      <p className="truncate">{token.userAddress}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Resource:</p>
+                      <p>{token.resource}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Status:</p>
+                      <p
+                        className={
+                          token.status === "Valid"
+                            ? "text-green-500"
+                            : "text-red-500"
+                        }
+                      >
+                        {token.status}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Time Remaining:</p>
+                      <p>{formatTime(token.remaining_time)}</p>
+                    </div>
+                  </div>
                 </li>
               ))}
           </ul>

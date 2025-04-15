@@ -3,12 +3,20 @@ from flask_cors import CORS
 from web3 import Web3
 import json
 import time
+import os
+from dotenv import load_dotenv
+from eth_account import Account
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:5173"]) 
 
-web3 = Web3(Web3.HTTPProvider("http://127.0.0.1:7545"))
+alchemy_url = os.getenv("ALCHEMY_URL")
+web3 = Web3(Web3.HTTPProvider(alchemy_url))
 
+private_key = os.getenv("ADMIN_PRIVATE_KEY")
+admin_address = web3.eth.account.from_key(private_key).address
 try:
     with open('contract_abi.json') as f:
         contract_abi = json.load(f)
@@ -17,7 +25,7 @@ except Exception as e:
     print("❌ Error loading ABI:", e)
     contract_abi = None
 
-contract_address = "0xaCc0EE450a8699856eFE82f825Ae4bB7cC5D3Fb4"
+contract_address = "0x57BEAd49c010f0B933E286EFfA8A89f42ec3B8e7"
 
 if contract_abi:
     contract = web3.eth.contract(address=contract_address, abi=contract_abi)
@@ -71,11 +79,21 @@ def get_token_status():
 def grant_access():
     try:
         data = request.json
-        account = web3.eth.accounts[0] 
+        user_address = data["user_address"]
+        resource = data["resource"]
+        duration = int(data["duration"])
 
-        tx_hash = contract.functions.issueToken(
-            data["user_address"], data["resource"], data["duration"]
-        ).transact({"from": account})
+        nonce = web3.eth.get_transaction_count(admin_address)
+        txn = contract.functions.issueToken(user_address, resource, duration).build_transaction({
+            "from": admin_address,
+            "nonce": nonce,
+            "gas": 300000,
+            "gasPrice": web3.to_wei("30", "gwei"),
+            "chainId": web3.eth.chain_id
+        })
+
+        signed_txn = Account.sign_transaction(txn, private_key)
+        tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
 
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
@@ -83,42 +101,50 @@ def grant_access():
         if not event_logs:
             raise ValueError("❌ TokenIssued event not found in logs")
 
-        token_id = event_logs[0]["args"]["tokenId"]  
+        token_id = event_logs[0]["args"]["tokenId"]
 
         global user_requests
-        user_requests = [req for req in user_requests if req["user_address"] != data["user_address"]]
-        
+        user_requests = [req for req in user_requests if req["user_address"] != user_address]
+
         return jsonify({"tx_hash": tx_hash.hex(), "token_id": token_id}), 200
+
     except Exception as e:
         print("🔥 Error in grant_access:", str(e))
         return jsonify({"error": str(e)}), 500
 
-def get_admin_address():
-    return contract.functions.admin().call()
+
 
 @app.route("/revoke_access", methods=["POST"])
 def revoke_access():
     try:
         data = request.json
-        token_id = int(data["tokenId"]) 
-
-        admin_address = get_admin_address()
+        token_id = int(data["tokenId"])
 
         is_valid = contract.functions.isTokenValid(token_id).call()
         if not is_valid:
             error_message = "⚠️ Token already expired, cannot revoke"
             print(error_message)
-            return jsonify({"error": error_message}), 400 
+            return jsonify({"error": error_message}), 400
 
         print(f"🔹 Revoking token ID {token_id} from admin {admin_address}")
 
-        tx_hash = contract.functions.revokeToken(token_id).transact({
-            "from": admin_address
+        nonce = web3.eth.get_transaction_count(admin_address)
+        txn = contract.functions.revokeToken(token_id).build_transaction({
+            "from": admin_address,
+            "nonce": nonce,
+            "gas": 200000,
+            "gasPrice": web3.to_wei("30", "gwei"),
+            "chainId": web3.eth.chain_id
         })
+
+        signed_txn = Account.sign_transaction(txn, private_key)
+        tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
 
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
+        print(f"✅ Revoked successfully with tx: {tx_hash.hex()}")
         return jsonify({"tx_hash": tx_hash.hex()}), 200
+
     except Exception as e:
         error_message = str(e)
         print(f"🔥 Error in revoke_access: {error_message}")
@@ -126,7 +152,7 @@ def revoke_access():
             error_message = "Token already expired, cannot revoke"
 
         return jsonify({"error": error_message}), 500
-
+    
 @app.route("/check_access/<int:tokenId>", methods=["GET"])
 def check_access(tokenId):
     try:

@@ -8,7 +8,7 @@ const GrantAccess = () => {
 
   const grantAccess = async () => {
     const response = await axios.post("http://127.0.0.1:5000/grant_access", {
-      to,
+      user_address: to,
       resource,
       duration: parseInt(duration),
     });
